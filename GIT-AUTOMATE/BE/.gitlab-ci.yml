@@ -1,0 +1,23 @@
+trigger-pipeline:
+  stage: be-deploy
+  trigger:
+    include:
+    - project: 'suryakiran/central-control' # The source repository
+      ref: main # The branch or tag where the .gitlab-ci.yml file is located
+      file: kookxtra.yml # The path to the .gitlab-ci.yml file in the source repository
+  variables:
+    CI_COMMIT_BRANCH: $CI_COMMIT_BRANCH
+    CI_PIPELINE_SOURCE: $CI_PIPELINE_SOURCE
+    DEPLOY_ALL: $DEPLOY_ALL
+
+
+stages:
+  - be-deploy
+
+test:
+  stage: be-deploy
+  script:
+    - echo "hello parent"
+  tags:
+    - be-deploy
+

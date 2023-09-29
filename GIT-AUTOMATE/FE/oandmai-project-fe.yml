@@ -1,0 +1,55 @@
+stages:
+  - sonarqube-check
+  - build
+
+sonarqube-check:
+  stage: sonarqube-check
+  image: 
+    name: sonarsource/sonar-scanner-cli:latest
+    entrypoint: [""]
+  variables:
+    SONAR_USER_HOME: "${CI_PROJECT_DIR}/.sonar"  # Defines the location of the analysis task cache
+    GIT_DEPTH: "0"  # Tells git to fetch all the branches of the project, required by the analysis task
+  cache:
+    key: "${CI_JOB_NAME}"
+    paths:
+      - .sonar/cache
+  script: 
+    - curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.1/install.sh | bash # Install nvm
+    - export NVM_DIR="$HOME/.nvm"
+    - source "$NVM_DIR/nvm.sh" # Load nvm
+    - nvm install v16.14
+    - node -v
+    - $SONAR_PATH/sonar-scanner -Dsonar.token=$SONAR_TOKEN -Dsonar.host.url=$SONAR_HOST_URL 
+  tags:
+    - sonarqube-check
+  #allow_failure: true
+  rules:
+    - if: $CI_COMMIT_BRANCH == 'main'
+    - if: $DEPLOY_ALL == 'all'
+
+
+build:
+  stage: build
+  script:
+    - echo "Building..."
+
+  #  - curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.3/install.sh | bash
+   # - source ~/.bashrc
+    - curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.1/install.sh | bash # Install nvm
+    - export NVM_DIR="$HOME/.nvm"
+    - source "$NVM_DIR/nvm.sh" # Load nvm
+    - nvm install v16.14
+    - node -v
+    - cd /home/gitlab-runner/builds/prt8ACnw/0/arjun.vk/oandmai-project-fe/
+    - npm i
+    - npm install -g @angular/cli
+    #- ng build --configuration=production
+    - ng build
+    - echo "Build Complete."
+  tags:
+    - oandmai-fe
+  rules:
+    - if: $CI_PIPELINE_SOURCE == 'build'
+    - if: $DEPLOY_ALL == 'all'
+

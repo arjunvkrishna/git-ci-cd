@@ -1,0 +1,23 @@
+trigger-pipeline:
+  stage: fe-deploy
+  trigger:
+    include:
+    - project: 'suryakiran/central-control' # The source repository
+      ref: main # The branch or tag where the .gitlab-ci.yml file is located
+      file: oandmai-project-fe.yml # The path to the .gitlab-ci.yml file in the source repository
+  variables:
+    CI_COMMIT_BRANCH: $CI_COMMIT_BRANCH
+    CI_PIPELINE_SOURCE: $CI_PIPELINE_SOURCE
+    DEPLOY_ALL: $DEPLOY_ALL
+
+
+stages:
+  - fe-deploy
+
+test:
+  stage: fe-deploy
+  script:
+    - echo "hello parent"
+  tags:
+    - fe-deploy
+
