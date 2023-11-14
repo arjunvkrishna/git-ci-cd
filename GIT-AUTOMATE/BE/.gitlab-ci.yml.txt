@@ -1,0 +1,264 @@
+stages:
+  - sonarqube-check_and_owasp
+  - bump-major-version
+  - bump-minor-version
+  - bump-patch-version
+  - pre-release
+  - build
+  - test
+  - release
+  - deploy
+  - verify
+
+variables:
+  MAVEN_CLI_OPTS: "--settings $CI_PROJECT_DIR/settings.xml"
+  MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
+
+sonarqube-check:
+  stage: sonarqube-check_and_owasp
+  image: maven:3.6.3-jdk-11
+  variables:
+    SONAR_USER_HOME: "${CI_PROJECT_DIR}/.sonar"
+    GIT_DEPTH: "0"
+  cache:
+    key: "${CI_JOB_NAME}"
+    paths:
+      - target/
+      - .sonar/cache
+      - .m2/repository
+  script: 
+    - export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64/
+    - echo $JAVA_HOME
+    - mvn verify sonar:sonar -Dsonar.projectKey=arjun.vk_java-test_AYuP03BiBVjKWrk1SfPE -Dsonar.projectName='java-test'
+    - cp -r target /tmp/target/
+  allow_failure: false
+  tags:
+    - sonar-test
+  rules:
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
+###############OWASP###################
+owasp-scan:
+  stage: sonarqube-check_and_owasp
+  image: 
+    name: owasp/dependency-check
+    entrypoint: [""]
+  script:
+    - echo "Scanning..."
+    - export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64/
+    - ls -lrt
+    - mvn clean install
+    - sudo mv /var/www/html/kookxtra/dependency-check-kookxtra-report.html /var/www/html/kookxtra/dependency-check-kookxtra-report-${current_date}.html
+    - sudo /home/gitlab-runner/dependency-check/bin/dependency-check.sh --project kookxtra  --out /var/www/html/kookxtra/ --scan . #--enableExperimental --failOnCVSS 9
+    - sudo mv /var/www/html/kookxtra/dependency-check-report.html /var/www/html/kookxtra/dependency-check-kookxtra-report.html
+    - sudo ls /var/www/html/kookxtra/
+    - echo "http://192.168.0.111/kookxtra/dependency-check-kookxtra-report.html"
+  tags:
+    - be-deploy 
+  rules:
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
+#########################################
+bump-major-version:
+  stage: bump-major-version
+  script:
+    - git checkout master
+    - git pull
+    - git checkout $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME
+    - git pull origin $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME
+    - export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64/
+    - mvn --batch-mode build-helper:parse-version versions:set -DnewVersion=\${parsedVersion.nextMajorVersion}.0.0-SNAPSHOT versions:commit
+    - git add pom.xml
+    - git config user.email $BOT_USERNAME
+    - git config user.name $BOT_USERNAME
+    - git commit -m "Bumps version"
+    - git push http://$BOT_USERNAME:$BOT_PWD@gitlab.seqato.com/$CI_PROJECT_PATH.git
+  rules:
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event' && $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME =~ /_*-*\/*(major)-*_*\/*/ && $BOT_USERNAME != $GITLAB_USER_NAME
+  tags:
+    - generic-platform
+  needs:
+    - job: sonarqube-check
+    - job: owasp-scan
+#####################################
+bump-minor-version:
+  stage: bump-minor-version
+  script:
+    - git config pull.rebase false
+    - git checkout master
+    - git pull
+    - git checkout $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME
+    - git pull origin $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME
+    - export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64/
+    - mvn --batch-mode build-helper:parse-version versions:set -DnewVersion=\${parsedVersion.majorVersion}.\${parsedVersion.nextMinorVersion}.0-SNAPSHOT versions:commit
+    - git add pom.xml
+    - git config user.email $BOT_USERNAME
+    - git config user.name $BOT_USERNAME
+    - git commit -m "Bumps version"
+    - git push http://$BOT_USERNAME:$BOT_PWD@gitlab.seqato.com/$CI_PROJECT_PATH.git
+  rules:
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event' && $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME =~ /_*-*\/*(feature)-*_*\/*/ && $BOT_USERNAME != $GITLAB_USER_NAME
+  tags:
+    - generic-platform
+  needs:
+    - job: sonarqube-check
+    - job: owasp-scan
+##############################
+bump-patch-version:
+  stage: bump-patch-version
+  script:
+    - git checkout master
+    - git pull
+    - git checkout $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME
+    - git pull origin $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME
+    - export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64/
+    - mvn --batch-mode build-helper:parse-version versions:set -DnewVersion=\${parsedVersion.majorVersion}.\${parsedVersion.minorVersion}.\${parsedVersion.nextIncrementalVersion}-SNAPSHOT versions:commit
+    - git add pom.xml
+    - git config user.email $BOT_USERNAME
+    - git config user.name $BOT_USERNAME
+    - git commit -m "Bumps version"
+    - git push http://$BOT_USERNAME:$BOT_PWD@gitlab.seqato.com/$CI_PROJECT_PATH.git
+  rules:
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event' && $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME =~ /_*-*\/*(bug)-*_*(fix)-*_*\/*/ && $BOT_USERNAME != $GITLAB_USER_NAME
+  tags:
+    - generic-platform
+  needs:
+    - job: sonarqube-check
+    - job: owasp-scan
+#######################################
+pre-release:
+  stage: pre-release
+  script:
+    - git checkout master
+    - git pull
+    - git branch -D $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME
+    - git checkout $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME
+    - git pull origin $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME
+    - git pull origin master
+    - export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64/
+    - mvn --batch-mode build-helper:parse-version versions:set -DnewVersion=\${parsedVersion.majorVersion}.\${parsedVersion.minorVersion}.\${parsedVersion.incrementalVersion} versions:commit
+    - git add pom.xml
+    - git config user.email $BOT_USERNAME
+    - git config user.name $BOT_USERNAME
+    - VERSION=$(mvn -q -Dexec.executable=echo -Dexec.args='${project.version}' --non-recursive exec:exec)
+    - git commit -m "Prepares release version - $VERSION"
+    - git tag $VERSION
+    - git push http://$BOT_USERNAME:$BOT_PWD@gitlab.seqato.com/$CI_PROJECT_PATH.git $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME $VERSION
+  rules:
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event' && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == 'master' && $BOT_USERNAME != $GITLAB_USER_NAME
+  tags:
+    - generic-platform
+  needs:
+    - job: sonarqube-check
+    - job: owasp-scan
+###############BUILD###################
+build:
+  stage: build
+  image: maven:3.6.3-jdk-11
+  script:
+    - echo "Building..."
+    - export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64/
+    - ls -lrt
+    - echo "Build completed"
+  tags:
+    - be-deploy 
+  needs:
+    - job: sonarqube-check
+    - job: owasp-scan
+  cache:
+    key: "${CI_JOB_NAME}"
+    paths:
+      - target/
+###############release###################
+release: #upload jar to gitlab Package Registry
+  stage: release
+  image: maven:3.6-jdk-11
+  script:
+    - echo "Uploading..."
+    - ls -lrt
+    - cp -r /tmp/target .
+    - export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64/
+    - 'mvn deploy -s ci_settings.xml'
+    - echo "Upload completed"
+  tags:
+    - be-deploy 
+  needs:
+    - job: sonarqube-check
+    - job: owasp-scan
+  cache:
+    key: "${CI_JOB_NAME}"
+    paths:
+      - target/
+###############TEST###################
+test:
+  stage: test
+  script:
+    - cp -r /tmp/target .
+    - export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64/
+    - mvn verify
+  artifacts:
+    when: always
+    reports:
+      junit:
+        - target/surefire-reports/TEST-*.xml
+        - target/failsafe-reports/TEST-*.xml
+  tags:
+    - be-deploy 
+  needs:
+    - job: sonarqube-check
+    - job: owasp-scan
+  cache:
+    key: "${CI_JOB_NAME}"
+    paths:
+      - target/
+###############DEPLOY TO STAGING###################
+deploy-to-staging:
+  stage: deploy
+  script:
+    - ls -lrt
+    - cp -r /tmp/target .
+    - scp -p29 target/kookxtra.jar gitlab-runner@vpn.seqato.com:/home/gitlab-runner/
+    #-i docker-2.pem -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null
+    - ssh -p29 gitlab-runner@vpn.seqato.com java -jar /home/gitlab-runner/kookxtra.jar -Dspring.config.location=/home/gitlab-runner/application.properties
+    - echo "deploy staging completed"
+  tags:
+    - be-deploy
+  needs:
+    - job: build
+    - job: test
+###############DEPLOY TO PROD#####################
+deploy-to-prod:
+  stage: deploy
+  script:
+    - ls -lrt
+    - cp -r /tmp/target .
+    - echo "deploy to prod completed"
+  tags:
+    - be-deploy 
+  needs:
+    - job: build
+    - job: test
+  when: manual
+##########VERIFICATION###########################
+staging-verification:
+  stage: verify
+  script:
+    - response_code=$(curl -sL -w "%{http_code}" -I "http://192.168.0.111/kookxtra/dependency-check-kookxtra-report.html" -o /dev/null)
+    - echo "HTTP response code:$response_code"
+    -  if [ "$response_code" -eq 200 ]; then echo "Verification successful"; else echo "Verification failed"; fi
+    - echo "Staging  verification completed"
+  tags:
+    - be-deploy 
+  needs:
+    - deploy-to-staging
+ 
+prod-verification:
+  stage: verify
+  script:
+    - response_code=$(curl -sL -w "%{http_code}" -I "http://192.168.0.111/kookxtra/dependency-check-kookxtra-report.html" -o /dev/null)
+    - echo "HTTP response code:$response_code"
+    -  if [ "$response_code" -eq 200 ]; then echo "Verification successful"; else echo "Verification failed"; fi
+    - echo "Prod verification completed"
+  tags:
+    - be-deploy 
+  needs:
+    - deploy-to-prod
+
