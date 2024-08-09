@@ -5,10 +5,9 @@ on:
     branches: [ main ]
 
 jobs:
-  build:
+  test:
     runs-on: self-hosted
-    
     steps:
-    - uses: actions/checkout@v3
-    - name: Run my test
-      run: echo "Hello from self-hosted runner!"
+      - uses: actions/checkout@v3
+      - name: Run tests
+        run: ./test.sh
